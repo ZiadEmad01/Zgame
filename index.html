@@ -411,9 +411,9 @@ async function nightAction(jobKey,payload){
 
 async function submitVote(targetId){
   const r=JSON.parse(JSON.stringify(room));
+  if(r.votes[myPlayerId]){showToast('صوّتت بالفعل، مش هتقدر تغير.');return;}
   r.votes[myPlayerId]=targetId;
   await saveRoom(r);
-  // الهوست يشيك لو التصويت اكتمل
   if(isHost())await autoAdvance(r);
 }
 
@@ -703,6 +703,10 @@ function renderVoting(m){
   const wrap=document.createElement('div');
   wrap.insertAdjacentHTML('beforeend','<div class="section-title">صوّت لطرد لاعب</div>');
   if(!m.alive)wrap.appendChild(mkEl('<p class="empty-note">إنت مطرود، متقدرش تصوّت.</p>'));
+  else if(room.votes[myPlayerId]){
+    const voted=room.players.find(p=>p.id===room.votes[myPlayerId]);
+    wrap.appendChild(mkEl(`<div class="card" style="--accent:var(--teal);text-align:center;"><p style="margin:0;color:var(--teal);font-weight:700;">✓ صوّتت على ${voted?esc(voted.name):'؟'} — مش هتقدر تغير.</p></div>`));
+  }
   else wrap.appendChild(picker(aliveP(room).filter(p=>p.id!==myPlayerId),id=>submitVote(id),room.votes[myPlayerId]));
   if(m.job==='dictator'&&m.alive){
     wrap.insertAdjacentHTML('beforeend','<div class="section-title">قدرة الديكتاتور</div>');
