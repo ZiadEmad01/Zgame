@@ -167,7 +167,17 @@ async function saveRoom(r){
 function subscribeRoom(code){
   if(unsubRoom) unsubRoom();
   unsubRoom=db.collection('zgame-rooms').doc(code).onSnapshot(snap=>{
-    if(snap.exists){ room=snap.data(); renderScreen(); }
+    if(snap.exists){
+      const data=snap.data();
+      // شيك لو اللاعب اتطرد (مش موجود في اللاعبين)
+      if(myPlayerId && !data.players.find(p=>p.id===myPlayerId)){
+        if(unsubRoom){unsubRoom();unsubRoom=null;}
+        myRoomCode=null;myPlayerId=null;room=null;
+        showKickedScreen();
+        return;
+      }
+      room=data; renderScreen();
+    }
   });
 }
 async function loadRoom(code){
@@ -266,6 +276,20 @@ async function joinRoom(code,displayName){
   r.players.push(p);addLog(r,`${displayName} دخل الغرفة.`);
   myPlayerId=pid;myRoomCode=code;
   await saveRoom(r);subscribeRoom(code);return true;
+}
+
+function showKickedScreen(){
+  const app=document.getElementById('app');app.innerHTML='';
+  app.insertAdjacentHTML('beforeend',`
+    <div class="auth-logo"><div class="z">Z</div><div class="name">Game — الجواسيس</div></div>
+    <div class="card" style="--accent:var(--red);text-align:center;padding:32px 18px;">
+      <div style="font-size:48px;margin-bottom:16px;">🚫</div>
+      <div style="font-size:20px;font-weight:900;color:var(--red);margin-bottom:8px;">تم طردك من الغرفة</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">الهوست قرر يطردك من اللعبة.</div>
+      <button class="btn-gold" id="backFromKick">الرجوع للقائمة الرئيسية</button>
+    </div>
+  `);
+  document.getElementById('backFromKick').onclick=renderLobbyHome;
 }
 
 async function kickPlayer(pid){
