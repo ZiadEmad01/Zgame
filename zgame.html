@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>ZGame — الجواسيس بين البشر</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+<!-- Firebase compat (يشتغل بدون module/CDN مشاكل) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<style>
+:root{
+  --bg:#08090f;--panel:#10141f;--panel2:#181e2e;--line:#232d42;
+  --text:#eef0f6;--muted:#7a8299;--gold:#e3b341;--red:#c1342f;
+  --teal:#26a69a;--human:#e89a3c;--spy:#c1342f;--green:#34c98d;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);color:var(--text);font-family:'Tajawal',sans-serif;min-height:100vh;}
+body{background-image:radial-gradient(ellipse at 15% 0%,rgba(227,179,65,.07),transparent 50%),radial-gradient(ellipse at 85% 100%,rgba(193,52,47,.07),transparent 50%);background-attachment:fixed;}
+.mono{font-family:'JetBrains Mono',monospace;}
+#app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;padding:16px 14px 40px;}
+
+.auth-logo{text-align:center;padding:40px 0 24px;}
+.auth-logo .z{font-size:52px;font-weight:900;color:var(--gold);letter-spacing:-3px;line-height:1;font-family:'JetBrains Mono',monospace;}
+.auth-logo .name{font-size:13px;color:var(--muted);letter-spacing:4px;text-transform:uppercase;margin-top:4px;}
+.auth-tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:4px;margin-bottom:20px;}
+.auth-tab{flex:1;text-align:center;padding:9px;border-radius:7px;cursor:pointer;font-weight:700;font-size:14px;color:var(--muted);transition:all .2s;}
+.auth-tab.active{background:var(--gold);color:#1a1304;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;letter-spacing:.5px;}
+.field input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:13px 14px;font-size:15px;font-family:'Tajawal',sans-serif;outline:none;transition:border .15s;}
+.field input:focus{border-color:var(--gold);}
+.divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;margin:16px 0;}
+.divider:before,.divider:after{content:'';flex:1;height:1px;background:var(--line);}
+.err-msg{background:rgba(193,52,47,.12);border:1px solid rgba(193,52,47,.3);border-radius:8px;padding:10px 14px;font-size:13px;color:#e57373;margin-bottom:14px;}
+
+button{font-family:'Tajawal',sans-serif;font-weight:700;font-size:15px;border:none;border-radius:9px;padding:13px 16px;cursor:pointer;width:100%;margin-bottom:10px;transition:transform .08s,opacity .15s;}
+button:active{transform:scale(.97);}
+button:disabled{opacity:.35;cursor:not-allowed;}
+.btn-gold{background:var(--gold);color:#1a1304;}
+.btn-red{background:var(--red);color:#fff;}
+.btn-outline{background:transparent;border:1.5px solid var(--line);color:var(--text);}
+.btn-teal{background:var(--teal);color:#06201d;}
+.btn-google{background:#fff;color:#1a1a1a;display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;}
+.btn-google svg{width:18px;height:18px;flex-shrink:0;}
+.row2{display:flex;gap:10px;}
+.row2 button{margin-bottom:0;}
+
+.stamp-bar{display:flex;justify-content:space-between;align-items:center;border:1.5px dashed var(--line);border-radius:10px;padding:10px 14px;margin-bottom:16px;background:var(--panel);}
+.stamp-bar .title{font-weight:900;font-size:16px;color:var(--gold);}
+.stamp-bar .sub{font-size:12px;color:var(--muted);}
+.stamp-bar .code-pill{font-family:'JetBrains Mono',monospace;font-weight:700;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;color:var(--gold);letter-spacing:2px;}
+.user-chip{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;margin-bottom:14px;font-size:13px;}
+.user-chip .av{width:26px;height:26px;border-radius:50%;background:var(--gold);color:#1a1304;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:12px;}
+.user-chip .nm{font-weight:700;flex:1;}
+.user-chip .logout{font-size:11px;color:var(--muted);cursor:pointer;border:none;background:none;padding:0;width:auto;margin-bottom:0;}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;position:relative;overflow:hidden;}
+.card:before{content:'';position:absolute;top:0;right:0;width:4px;height:100%;background:var(--accent,var(--gold));}
+.section-title{font-size:12px;font-weight:900;color:var(--gold);margin:16px 0 10px;text-transform:uppercase;letter-spacing:1.5px;}
+.empty-note{font-size:13px;color:var(--muted);text-align:center;padding:18px 0;}
+.lead{color:var(--muted);font-size:14px;margin:0 0 20px;line-height:1.8;}
+
+.player-row{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--panel2);border-radius:9px;margin-bottom:8px;border:1px solid var(--line);}
+.player-row.dead{opacity:.35;text-decoration:line-through;}
+.player-name{font-weight:700;font-size:14px;}
+.host-badge{font-size:10px;color:var(--gold);border:1px solid var(--gold);border-radius:5px;padding:1px 6px;margin-left:6px;}
+
+.role-card{border-radius:16px;padding:22px;text-align:center;margin-bottom:16px;border:2px solid var(--accent);background:linear-gradient(180deg,var(--panel2),var(--panel));}
+.role-card .seal{width:60px;height:60px;border-radius:50%;background:var(--accent);margin:0 auto 12px;display:flex;align-items:center;justify-content:center;font-size:24px;color:#0a0e16;}
+.role-card .role-name{font-size:22px;font-weight:900;margin-bottom:4px;}
+.role-card .role-desc{font-size:13px;line-height:1.9;opacity:.85;}
+
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;margin-right:4px;}
+.tag-human{background:rgba(232,154,60,.18);color:var(--human);}
+.tag-spy{background:rgba(193,52,47,.18);color:var(--spy);}
+
+.pick-btn{width:100%;text-align:right;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:11px 14px;margin-bottom:8px;font-size:14px;font-weight:500;cursor:pointer;font-family:'Tajawal',sans-serif;transition:border .15s,background .15s;}
+.pick-btn.selected,.pick-btn:hover{border-color:var(--gold);background:rgba(227,179,65,.08);}
+
+.log-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;max-height:150px;overflow-y:auto;font-size:12.5px;color:var(--muted);line-height:2;}
+.log-entry{border-bottom:1px dashed var(--line);padding:4px 0;}
+.log-entry:last-child{border-bottom:none;}
+
+.winner-banner{text-align:center;padding:28px 18px;border-radius:16px;margin-bottom:18px;background:linear-gradient(160deg,var(--panel2),var(--panel));border:2px solid var(--gold);}
+.winner-banner .big{font-size:28px;font-weight:900;color:var(--gold);margin-bottom:8px;}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.num-box{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center;}
+.num-box .n{font-size:26px;font-weight:900;color:var(--gold);font-family:'JetBrains Mono',monospace;}
+.num-box .l{font-size:11px;color:var(--muted);margin-top:2px;}
+
+.spinner{width:36px;height:36px;border:3px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:40px auto;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--gold);color:var(--text);padding:10px 20px;border-radius:30px;font-size:13px;z-index:999;max-width:88%;text-align:center;display:none;}
+.footer-note{font-size:11.5px;color:var(--muted);text-align:center;margin-top:10px;line-height:1.8;}
+</style>
+</head>
+<body>
+<div id="app"><div class="spinner"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+window.addEventListener('load', function() {
+// ═══════════════════ FIREBASE INIT ═══════════════════
+const firebaseConfig = {
+  apiKey:"AIzaSyAAypLbWFY0JNtW28nlfeCoRchyIAaheXc",
+  authDomain:"zeyadgamed-caf5f.firebaseapp.com",
+  projectId:"zeyadgamed-caf5f",
+  storageBucket:"zeyadgamed-caf5f.firebasestorage.app",
+  messagingSenderId:"622486240431",
+  appId:"1:622486240431:web:caa771d6ea8dc84c09e85a"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+// ═══════════════════ ROLES ═══════════════════
+const ROLES = {
+  jester:   {name:'المهرج',     side:'human',color:'#b186e8',seal:'😈',desc:'مهمتك تشكك كل الناس فيك. لو خرجت بالتصويت... إنت الفايز!'},
+  traitor:  {name:'الخاين',     side:'human',color:'#34c98d',seal:'🕷️',desc:'بتساعد الجواسيس من تحت لتحت. تقدر تقتل بشري بنفسك مرتين.',uses:2},
+  villain:  {name:'الشرير',     side:'human',color:'#666',   seal:'💀',desc:'لو الجواسيس خلصوا كلهم... تتحول إنت لجاسوس وتكمل المهمة.'},
+  hacker:   {name:'الهاكر',     side:'spy',  color:'#8a5fae',seal:'🛠️',desc:'تقدر تعطل وظيفة لاعب تاني لمدة جولة كاملة.'},
+  dictator: {name:'الديكتاتور',side:'spy',  color:'#2c4a78',seal:'🗳️',desc:'تقدر تغير نتيجة التصويت على مزاجك مرتين.',uses:2},
+  lawyer:   {name:'المحامي',    side:'any',  color:'#33c2c2',seal:'⚖️',desc:'تحمي لاعب واحد كل جولة من الطرد بالتصويت.'},
+  sheriff:  {name:'الشرطي',     side:'any',  color:'#e8c93b',seal:'🛡️',desc:'تقدر تطرد لاعب من غير تصويت، مرتين بس.',uses:2},
+  killer:   {name:'القاتل',     side:'any',  color:'#2a3fae',seal:'🔪',desc:'لو خرجت بالتصويت، تقدر تاخد حد معاك.',uses:1},
+  angel:    {name:'الملاك',     side:'any',  color:'#cfd2e0',seal:'🪽',desc:'تقدر ترجع لاعب اتطرد ظلم، مرة واحدة.',uses:1},
+  changer:  {name:'المغير',     side:'any',  color:'#1f8a72',seal:'🔄',desc:'تقدر تغير وظيفتك لوظيفة عشوائية، مرة واحدة.',uses:1},
+  sensor:   {name:'المستشعر',  side:'any',  color:'#8c2f4a',seal:'🔎',desc:'تعرف عدد اللاعبين والجواسيس والوظايف المتبقية.'},
+  bomber:   {name:'المفجر',     side:'any',  color:'#a06a1f',seal:'💣',desc:'عندك هدف سري لازم يتطرد، وإلا هتفرقع!'},
+  neutral:  {name:'المحايد',   side:'any',  color:'#2ad9c9',seal:'🎯',desc:'خمّن مين هيكسب. لو صح، تكسب معاهم.',uses:1},
+  aphrodite:{name:'الجميلة',   side:'any',  color:'#e87fae',seal:'🌸',desc:'الوحيدة اللي تقدر تنقذ المهرج لو طلع بالتصويت.',uses:1}
+};
+const HUMAN_ONLY=['jester','traitor','villain'];
+const SPY_ONLY=['hacker','dictator'];
+const ANY_JOBS=['lawyer','sheriff','killer','angel','changer','sensor','bomber','neutral','aphrodite'];
+const BOMBER_DEADLINE=4;
+
+// ═══════════════════ STATE ═══════════════════
+let currentUser=null, myPlayerId=null, myRoomCode=null, room=null, unsubRoom=null;
+
+// ═══════════════════ HELPERS ═══════════════════
+let toastTmr;
+function showToast(msg){
+  clearTimeout(toastTmr);
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.style.display='block';
+  toastTmr=setTimeout(()=>t.style.display='none',2600);
+}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function uid(){return Math.random().toString(36).slice(2,10);}
+function shuffle(a){const b=a.slice();for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+function mkEl(html){const d=document.createElement('div');d.innerHTML=html;return d.firstElementChild;}
+
+// ═══════════════════ FIRESTORE ═══════════════════
+async function saveRoom(r){
+  r.updatedAt=Date.now(); room=r;
+  try{ await db.collection('zgame-rooms').doc(r.code).set(r); }
+  catch(e){ showToast('مشكلة حفظ: '+e.message); }
+}
+function subscribeRoom(code){
+  if(unsubRoom) unsubRoom();
+  unsubRoom=db.collection('zgame-rooms').doc(code).onSnapshot(snap=>{
+    if(snap.exists){ room=snap.data(); renderScreen(); }
+  });
+}
+async function loadRoom(code){
+  const snap=await db.collection('zgame-rooms').doc(code).get();
+  return snap.exists?snap.data():null;
+}
+
+// ═══════════════════ GAME LOGIC ═══════════════════
+function me(){return room?room.players.find(p=>p.id===myPlayerId):null;}
+function isHost(){const m=me();return m&&room&&room.hostId===m.id;}
+function aliveP(r){return (r||room).players.filter(p=>p.alive);}
+function aliveSide(r,side){return (r||room).players.filter(p=>p.alive&&p.side===side);}
+function addLog(r,text){r.log=r.log||[];r.log.unshift({round:r.round,phase:r.phase,text});}
+
+function newPlayer(pid,name){
+  return {id:pid,name,side:null,job:null,alive:true,usesLeft:0,
+    protectedThisRound:false,disabledThisRound:false,
+    bomberTarget:null,bomberSafe:false,neutralGuess:null,
+    villainConverted:false,changedOnce:false};
+}
+
+function assignRoles(r){
+  const n=r.players.length;
+  let sc=Math.max(1,Math.round(n/4));
+  if(sc>=n)sc=Math.max(1,n-2);
+  const sh=shuffle(r.players);
+  sh.forEach((p,i)=>p.side=i<sc?'spy':'human');
+  const humans=shuffle(sh.filter(p=>p.side==='human'));
+  const spies=shuffle(sh.filter(p=>p.side==='spy'));
+  const hj=shuffle(HUMAN_ONLY.slice()),sj=shuffle(SPY_ONLY.slice()),aj=shuffle(ANY_JOBS.slice());
+  let hi=0;for(const j of hj){if(hi>=humans.length)break;humans[hi++].job=j;}
+  let si=0;for(const j of sj){if(si>=spies.length)break;spies[si++].job=j;}
+  const rest=shuffle(humans.slice(hi).concat(spies.slice(si)));
+  let ri=0;for(const j of aj){if(ri>=rest.length)break;rest[ri++].job=j;}
+  r.players.forEach(p=>{
+    const m=ROLES[p.job];p.usesLeft=m&&m.uses?m.uses:0;
+    if(p.job==='bomber'){
+      const opts=r.players.filter(x=>x.id!==p.id);
+      p.bomberTarget=opts[Math.floor(Math.random()*opts.length)].id;
+    }
+  });
+  r.phase='night';r.round=1;
+  addLog(r,'— بدأت اللعبة! الجولة 1: الليل —');
+}
+
+function checkWin(r){
+  if(r.winner)return;
+  const sp=aliveSide(r,'spy').length,hu=aliveSide(r,'human').length;
+  if(sp===0)r.winner='human';
+  else if(sp>=hu)r.winner='spy';
+  if(r.winner){
+    const neu=r.players.find(p=>p.job==='neutral');
+    if(neu&&neu.neutralGuess===r.winner)r.neutralWin=true;
+    r.phase='ended';
+    addLog(r,r.winner==='human'?'— البشر كسبوا! —':'— الجواسيس كسبوا! —');
+  }
+}
+
+function bomberCheck(r){
+  const b=r.players.find(p=>p.job==='bomber'&&p.alive);if(!b)return;
+  const t=r.players.find(p=>p.id===b.bomberTarget);
+  if(t&&!t.alive){b.bomberSafe=true;return;}
+  if(!b.bomberSafe&&r.round>BOMBER_DEADLINE){b.alive=false;addLog(r,`${b.name} (المفجر) فرقع!`);}
+}
+
+function tallyVotes(r){
+  const c={};Object.values(r.votes||{}).forEach(t=>c[t]=(c[t]||0)+1);
+  let best=null,bc=-1;Object.entries(c).forEach(([id,n])=>{if(n>bc){bc=n;best=id;}});
+  return best;
+}
+
+// ═══════════════════ ACTIONS ═══════════════════
+async function createRoom(displayName){
+  const code=Array.from({length:4},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+  const pid=uid();
+  const r={code,hostId:pid,phase:'lobby',round:0,winner:null,neutralWin:false,
+    votes:{},voteOverride:null,aphroditeSave:false,killerRevengeFor:null,log:[],
+    players:[newPlayer(pid,displayName)]};
+  addLog(r,'أُنشئت الغرفة.');
+  myPlayerId=pid;myRoomCode=code;
+  await saveRoom(r);subscribeRoom(code);
+}
+
+async function joinRoom(code,displayName){
+  code=code.trim().toUpperCase();
+  const r=await loadRoom(code);
+  if(!r){showToast('مفيش غرفة بالكود ده');return false;}
+  const byUid=r.players.find(p=>p.uid===currentUser.uid);
+  if(byUid){myPlayerId=byUid.id;myRoomCode=code;subscribeRoom(code);return true;}
+  if(r.phase!=='lobby'){
+    const byName=r.players.find(p=>p.name===displayName);
+    if(byName){myPlayerId=byName.id;myRoomCode=code;subscribeRoom(code);return true;}
+    showToast('اللعبة بدأت، مش هتقدر تدخل');return false;
+  }
+  const pid=uid();const p=newPlayer(pid,displayName);p.uid=currentUser.uid;
+  r.players.push(p);addLog(r,`${displayName} دخل الغرفة.`);
+  myPlayerId=pid;myRoomCode=code;
+  await saveRoom(r);subscribeRoom(code);return true;
+}
+
+async function hostStartGame(){
+  if(!isHost())return;
+  const r=JSON.parse(JSON.stringify(room));
+  if(r.players.length<4){showToast('لازم 4 لاعبين على الأقل');return;}
+  assignRoles(r);await saveRoom(r);
+}
+
+async function nightAction(jobKey,payload){
+  const r=JSON.parse(JSON.stringify(room));
+  const m=r.players.find(p=>p.id===myPlayerId);
+  if(!m||m.disabledThisRound)return;
+  if(jobKey==='traitor'&&payload.targetId){
+    const t=r.players.find(p=>p.id===payload.targetId);
+    if(t&&t.alive&&m.usesLeft>0){t.alive=false;m.usesLeft--;addLog(r,`${t.name} اختفى الليلة. (الخاين)`);}
+  }else if(jobKey==='villain'){
+    if(aliveSide(r,'spy').length===0&&!m.villainConverted){m.villainConverted=true;m.side='spy';addLog(r,`${m.name} تحول لجاسوس!`);}
+  }else if(jobKey==='hacker'&&payload.targetId){
+    const t=r.players.find(p=>p.id===payload.targetId);
+    if(t){t.disabledThisRound=true;addLog(r,'لاعب عُطِّلت وظيفته الليلة.');}
+  }else if(jobKey==='lawyer'&&payload.targetId){
+    const t=r.players.find(p=>p.id===payload.targetId);
+    if(t){t.protectedThisRound=true;addLog(r,'لاعب يتحمى الليلة.');}
+  }else if(jobKey==='sheriff'&&payload.targetId){
+    const t=r.players.find(p=>p.id===payload.targetId);
+    if(t&&t.alive&&m.usesLeft>0){t.alive=false;m.usesLeft--;addLog(r,`${t.name} اتطرد! (الشرطي)`);}
+  }else if(jobKey==='angel'&&payload.targetId){
+    const t=r.players.find(p=>p.id===payload.targetId);
+    if(t&&!t.alive&&m.usesLeft>0){t.alive=true;m.usesLeft--;addLog(r,`${t.name} رجع! (الملاك)`);}
+  }else if(jobKey==='changer'){
+    if(!m.changedOnce){
+      const pool=Object.keys(ROLES).filter(k=>k!==m.job&&(HUMAN_ONLY.includes(k)?m.side==='human':SPY_ONLY.includes(k)?m.side==='spy':true));
+      const nj=pool[Math.floor(Math.random()*pool.length)];
+      m.job=nj;m.changedOnce=true;const nm=ROLES[nj];m.usesLeft=nm&&nm.uses?nm.uses:0;
+      addLog(r,`${m.name} غيّر وظيفته.`);
+    }
+  }else if(jobKey==='neutral'&&payload.guess){
+    if(!m.neutralGuess){m.neutralGuess=payload.guess;addLog(r,'المحايد حدد تخمينه.');}
+  }
+  await saveRoom(r);
+}
+
+async function submitVote(targetId){
+  const r=JSON.parse(JSON.stringify(room));
+  r.votes[myPlayerId]=targetId;await saveRoom(r);
+}
+async function dictatorOverride(targetId){
+  const r=JSON.parse(JSON.stringify(room));
+  const m=r.players.find(p=>p.id===myPlayerId);
+  if(m&&m.usesLeft>0){r.voteOverride=targetId;m.usesLeft--;addLog(r,'الديكتاتور غيّر التصويت!');await saveRoom(r);}
+}
+async function aphroditeToggle(){
+  const r=JSON.parse(JSON.stringify(room));
+  const m=r.players.find(p=>p.id===myPlayerId);
+  if(m&&m.usesLeft>0){r.aphroditeSave=!r.aphroditeSave;await saveRoom(r);}
+}
+async function resolveVoting(){
+  const r=JSON.parse(JSON.stringify(room));
+  const targetId=r.voteOverride||tallyVotes(r);
+  if(!targetId){showToast('مفيش تصويت كافي');return;}
+  const t=r.players.find(p=>p.id===targetId);if(!t)return;
+  if(t.protectedThisRound){
+    addLog(r,`${t.name} كان محمي، مطردش.`);
+  }else if(t.job==='jester'&&r.aphroditeSave){
+    addLog(r,`${t.name} (المهرج) أنقذته الجميلة!`);
+    const aph=r.players.find(p=>p.job==='aphrodite');if(aph)aph.usesLeft=0;
+  }else{
+    t.alive=false;addLog(r,`${t.name} طلع بالتصويت.`);
+    if(t.job==='jester'){r.winner='jester';r.phase='ended';addLog(r,`— المهرج فاز! ${t.name} كان المهرج —`);}
+    else if(t.job==='killer'&&t.usesLeft>0){r.killerRevengeFor=t.id;addLog(r,`${t.name} كان القاتل! هياخد حد معاه...`);}
+  }
+  r.players.forEach(p=>{p.protectedThisRound=false;p.disabledThisRound=false;});
+  r.votes={};r.voteOverride=null;r.aphroditeSave=false;
+  if(!r.winner)checkWin(r);
+  if(!r.winner&&!r.killerRevengeFor){
+    r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);
+    if(!r.winner)addLog(r,`— الجولة ${r.round}: الليل —`);
+  }else if(r.killerRevengeFor){r.phase='killerRevenge';}
+  await saveRoom(r);
+}
+async function killerRevenge(targetId){
+  const r=JSON.parse(JSON.stringify(room));
+  const killer=r.players.find(p=>p.id===r.killerRevengeFor);
+  const t=r.players.find(p=>p.id===targetId);
+  if(killer&&t&&t.alive){t.alive=false;addLog(r,`${killer.name} أخد ${t.name} معاه!`);}
+  r.killerRevengeFor=null;checkWin(r);
+  if(!r.winner){r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);if(!r.winner)addLog(r,`— الجولة ${r.round}: الليل —`);}
+  await saveRoom(r);
+}
+async function skipRevenge(){
+  const r=JSON.parse(JSON.stringify(room));
+  r.killerRevengeFor=null;checkWin(r);
+  if(!r.winner){r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);if(!r.winner)addLog(r,`— الجولة ${r.round}: الليل —`);}
+  await saveRoom(r);
+}
+async function hostEndNight(){
+  const r=JSON.parse(JSON.stringify(room));checkWin(r);
+  if(!r.winner){r.phase='voting';addLog(r,'— وقت التصويت —');}
+  await saveRoom(r);
+}
+async function hostDeclare(side){
+  const r=JSON.parse(JSON.stringify(room));
+  r.winner=side;r.phase='ended';addLog(r,'الهوست أعلن الفوز يدويًا.');
+  await saveRoom(r);
+}
+async function hostReset(){
+  const r=JSON.parse(JSON.stringify(room));
+  r.phase='lobby';r.round=0;r.winner=null;r.neutralWin=false;
+  r.votes={};r.voteOverride=null;r.aphroditeSave=false;r.killerRevengeFor=null;
+  r.players.forEach(p=>Object.assign(p,{side:null,job:null,alive:true,usesLeft:0,
+    protectedThisRound:false,disabledThisRound:false,bomberTarget:null,
+    bomberSafe:false,neutralGuess:null,villainConverted:false,changedOnce:false}));
+  addLog(r,'— لعبة جديدة —');await saveRoom(r);
+}
+
+// ═══════════════════ RENDER ═══════════════════
+function renderScreen(){
+  const app=document.getElementById('app');app.innerHTML='';
+  if(!room){renderLobbyHome();return;}
+  app.appendChild(renderTopBar());
+  if(currentUser){
+    const dn=currentUser.displayName||currentUser.email||'؟';
+    const ch=mkEl(`<div class="user-chip"><div class="av">${dn[0].toUpperCase()}</div><div class="nm">${esc(dn)}</div><button class="logout" onclick="doSignOut()">خروج</button></div>`);
+    app.appendChild(ch);
+  }
+  if(room.phase==='lobby')app.appendChild(renderLobby());
+  else if(room.phase==='ended')app.appendChild(renderEnded());
+  else app.appendChild(renderInGame());
+}
+window.doSignOut=()=>{auth.signOut();};
+
+function renderTopBar(){
+  const labels={lobby:'في الانتظار',night:'🌙 الليل',voting:'🗳️ التصويت',killerRevenge:'🔪 رد القاتل',ended:'انتهت'};
+  return mkEl(`<div class="stamp-bar">
+    <div><div class="title">ZGame</div><div class="sub">${room.phase==='lobby'?'غرفة الانتظار':'الجولة '+room.round+' • '+(labels[room.phase]||room.phase)}</div></div>
+    <div class="code-pill">${room.code}</div>
+  </div>`);
+}
+
+function renderLobby(){
+  const wrap=document.createElement('div');
+  wrap.innerHTML=`<p class="lead">شارك الكود <b class="mono" style="color:var(--gold)">${room.code}</b> مع الفريق.</p><div class="section-title">اللاعبين (${room.players.length})</div>`;
+  const card=mkEl(`<div class="card" style="--accent:#26a69a"></div>`);
+  room.players.forEach(p=>{
+    card.insertAdjacentHTML('beforeend',`<div class="player-row">
+      <span class="player-name">${p.id===room.hostId?'<span class="host-badge">هوست</span>':''}${esc(p.name)}${p.id===myPlayerId?' <span style="color:var(--muted);font-size:11px;">(إنت)</span>':''}</span>
+    </div>`);
+  });
+  wrap.appendChild(card);
+  if(isHost()){
+    const btn=mkEl(`<button class="btn-gold" ${room.players.length<4?'disabled':''}>ابدأ اللعبة${room.players.length<4?' (لازم 4 على الأقل)':''}</button>`);
+    btn.onclick=hostStartGame;wrap.appendChild(btn);
+  }else{
+    wrap.insertAdjacentHTML('beforeend','<p class="empty-note">في انتظار الهوست يبدأ...</p>');
+  }
+  return wrap;
+}
+
+function renderEnded(){
+  const wrap=document.createElement('div');
+  const m=me();
+  const wt={human:'البشر كسبوا 🎉',spy:'الجواسيس كسبوا 🕵️',jester:'المهرج فاز 😈'}[room.winner]||'انتهت';
+  let myRes='';
+  if(m){
+    let won=(room.winner==='jester'&&m.job==='jester')||(room.winner!=='jester'&&m.side===room.winner)||(room.neutralWin&&m.job==='neutral');
+    myRes=won?'إنت من الفايزين! 🏆':'إنت من الخاسرين.';
+  }
+  wrap.innerHTML=`<div class="winner-banner"><div class="big">${wt}</div><div style="color:var(--muted);font-size:14px;">${myRes}</div></div>
+  <div class="section-title">الأدوار</div>`;
+  const card=mkEl(`<div class="card" style="--accent:var(--gold)"></div>`);
+  room.players.forEach(p=>{
+    const meta=ROLES[p.job];
+    card.insertAdjacentHTML('beforeend',`<div class="player-row ${!p.alive?'dead':''}">
+      <span class="player-name">${esc(p.name)}</span>
+      <span><span class="tag ${p.side==='spy'?'tag-spy':'tag-human'}">${p.side==='spy'?'جاسوس':'بشري'}</span>${meta?`<span class="tag" style="background:rgba(255,255,255,.07);color:${meta.color}">${meta.name}</span>`:''}</span>
+    </div>`);
+  });
+  wrap.appendChild(card);
+  wrap.insertAdjacentHTML('beforeend','<div class="section-title">سجل القضية</div>');
+  wrap.appendChild(renderLog());
+  if(isHost()){
+    const b=mkEl(`<button class="btn-outline" style="margin-top:14px;">لعبة جديدة</button>`);
+    b.onclick=hostReset;wrap.appendChild(b);
+  }
+  return wrap;
+}
+
+function renderInGame(){
+  const wrap=document.createElement('div');
+  const m=me();
+  if(!m){wrap.innerHTML='<p class="empty-note">جاري التحميل...</p>';return wrap;}
+  const meta=ROLES[m.job];
+  const accent=meta?meta.color:(m.side==='spy'?'var(--spy)':'var(--human)');
+  wrap.appendChild(mkEl(`<div class="role-card" style="--accent:${accent}">
+    <div class="seal">${meta?meta.seal:(m.side==='spy'?'🕵️':'🙂')}</div>
+    <div class="role-name">${meta?meta.name:(m.side==='spy'?'جاسوس عادي':'بشري عادي')}</div>
+    <div style="margin:4px 0 8px;"><span class="tag ${m.side==='spy'?'tag-spy':'tag-human'}">${m.side==='spy'?'جاسوس':'بشري'}</span>${!m.alive?'<span style="color:var(--red);font-size:12px;margin-right:6px;">مطرود</span>':''}</div>
+    <div class="role-desc">${meta?meta.desc:(m.side==='spy'?'مهمتك تقتل البشر.':'مهمتك تكشف الجواسيس.')}</div>
+    ${meta&&meta.uses?`<div style="margin-top:8px;font-size:12px;color:var(--muted);">استخدامات: <b class="mono" style="color:var(--gold)">${m.usesLeft}</b></div>`:''}
+  </div>`));
+
+  if(!m.alive&&room.phase!=='killerRevenge'){
+    wrap.appendChild(mkEl('<p class="empty-note">إنت اتطردت، تابع بصمت 🤫</p>'));
+  }else{
+    if(room.phase==='night')wrap.appendChild(renderNight(m));
+    else if(room.phase==='voting')wrap.appendChild(renderVoting(m));
+    else if(room.phase==='killerRevenge')wrap.appendChild(renderKillerPanel(m));
+  }
+
+  wrap.insertAdjacentHTML('beforeend','<div class="section-title">حالة اللاعبين</div>');
+  const sc=mkEl(`<div class="card" style="--accent:#2a3550"></div>`);
+  room.players.forEach(p=>{
+    sc.insertAdjacentHTML('beforeend',`<div class="player-row ${!p.alive?'dead':''}">
+      <span class="player-name">${esc(p.name)}${p.id===myPlayerId?' <span style="color:var(--muted);font-size:11px;">(إنت)</span>':''}</span>
+      <span style="color:var(--muted);font-size:12px;">${p.alive?'موجود':'مطرود'}</span>
+    </div>`);
+  });
+  wrap.appendChild(sc);
+  if(isHost())wrap.appendChild(renderHostControls());
+  wrap.insertAdjacentHTML('beforeend','<div class="section-title">سجل القضية</div>');
+  wrap.appendChild(renderLog());
+  return wrap;
+}
+
+function renderNight(m){
+  const wrap=document.createElement('div');
+  if(m.disabledThisRound){wrap.appendChild(mkEl(`<div class="card" style="--accent:var(--red)"><p style="margin:0;font-size:13px;color:var(--muted);">وظيفتك معطلة هذه الجولة.</p></div>`));return wrap;}
+  const meta=ROLES[m.job];
+  if(!meta)return wrap;
+  const action=meta.action||(m.job==='traitor'?'kill':m.job==='villain'?'convert':m.job==='hacker'?'disable':m.job==='lawyer'?'protect':m.job==='sheriff'?'eliminate':m.job==='angel'?'revive':m.job==='changer'?'changeJob':m.job==='sensor'?'sense':m.job==='neutral'?'predict':m.job==='dictator'||m.job==='aphrodite'?'waitVote':null);
+  
+  if(action==='kill'||action==='eliminate'){
+    wrap.insertAdjacentHTML('beforeend','<div class="section-title">اختار هدفك</div>');
+    if(m.usesLeft<=0)wrap.appendChild(mkEl('<p class="empty-note">خلصت استخداماتك.</p>'));
+    else{
+      const targets=aliveP(room).filter(p=>m.job==='traitor'?p.side==='human'&&p.id!==myPlayerId:p.id!==myPlayerId);
+      wrap.appendChild(picker(targets,id=>nightAction(m.job,{targetId:id})));
+    }
+  }else if(action==='convert'){
+    if(m.villainConverted)wrap.appendChild(mkEl('<p class="empty-note">تحولت لجاسوس بالفعل.</p>'));
+    else if(aliveSide(room,'spy').length>0)wrap.appendChild(mkEl('<p class="empty-note">لسه فيه جواسيس، استنى...</p>'));
+    else{const b=mkEl(`<button class="btn-red">تحول لجاسوس الآن</button>`);b.onclick=()=>nightAction('villain',{});wrap.appendChild(b);}
+  }else if(action==='disable'){
+    wrap.insertAdjacentHTML('beforeend','<div class="section-title">اعطل وظيفة لاعب</div>');
+    wrap.appendChild(picker(aliveP(room).filter(p=>p.job&&p.id!==myPlayerId),id=>nightAction('hacker',{targetId:id})));
+  }else if(action==='protect'){
+    wrap.insertAdjacentHTML('beforeend','<div class="section-title">احمي لاعب</div>');
+    wrap.appendChild(picker(aliveP(room),id=>nightAction('lawyer',{targetId:id})));
+  }else if(action==='revive'){
+    const dead=room.players.filter(p=>!p.alive);
+    if(m.usesLeft<=0||dead.length===0)wrap.appendChild(mkEl('<p class="empty-note">مفيش حد تقدر ترجعه.</p>'));
+    else{wrap.insertAdjacentHTML('beforeend','<div class="section-title">ارجع لاعب</div>');wrap.appendChild(picker(dead,id=>nightAction('angel',{targetId:id})));}
+  }else if(action==='changeJob'){
+    if(m.changedOnce)wrap.appendChild(mkEl('<p class="empty-note">استخدمت قدرتك.</p>'));
+    else{const b=mkEl(`<button class="btn-teal">غيّر وظيفتي</button>`);b.onclick=()=>nightAction('changer',{});wrap.appendChild(b);}
+  }else if(action==='sense'){
+    const sp=aliveSide(room,'spy').length,hu=aliveSide(room,'human').length;
+    wrap.appendChild(mkEl(`<div class="grid2">
+      <div class="num-box"><div class="n">${sp+hu}</div><div class="l">لاعبين موجودين</div></div>
+      <div class="num-box"><div class="n">${sp}</div><div class="l">جواسيس</div></div>
+      <div class="num-box"><div class="n">${room.players.filter(p=>p.alive&&p.job).length}</div><div class="l">وظايف نشطة</div></div>
+      <div class="num-box"><div class="n">${room.round}</div><div class="l">الجولة</div></div>
+    </div>`));
+  }else if(action==='predict'){
+    if(m.neutralGuess)wrap.appendChild(mkEl(`<p class="empty-note">خمّنت: ${m.neutralGuess==='human'?'البشر':'الجواسيس'}</p>`));
+    else{
+      wrap.insertAdjacentHTML('beforeend','<div class="section-title">مين هيكسب؟</div>');
+      const rw=mkEl(`<div class="row2"></div>`);
+      const b1=mkEl(`<button class="btn-outline">البشر</button>`);b1.onclick=()=>nightAction('neutral',{guess:'human'});
+      const b2=mkEl(`<button class="btn-outline">الجواسيس</button>`);b2.onclick=()=>nightAction('neutral',{guess:'spy'});
+      rw.append(b1,b2);wrap.appendChild(rw);
+    }
+  }else if(action==='waitVote'){
+    wrap.appendChild(mkEl('<p class="empty-note">قدرتك تتفعّل وقت التصويت.</p>'));
+  }
+
+  if(m.job==='bomber'){
+    const bt=room.players.find(p=>p.id===m.bomberTarget);
+    wrap.appendChild(mkEl(`<div class="card" style="--accent:#a06a1f;margin-top:10px;"><p style="margin:0;font-size:13px;">هدفك: <b style="color:var(--gold)">${bt?esc(bt.name):'؟'}</b> — لازم يتطرد قبل الجولة ${BOMBER_DEADLINE+1}. ${m.bomberSafe?'<b style="color:#34c98d">بأمان ✓</b>':''}</p></div>`));
+  }
+  return wrap;
+}
+
+function renderVoting(m){
+  const wrap=document.createElement('div');
+  wrap.insertAdjacentHTML('beforeend','<div class="section-title">صوّت لطرد لاعب</div>');
+  if(!m.alive)wrap.appendChild(mkEl('<p class="empty-note">إنت مطرود، متقدرش تصوّت.</p>'));
+  else wrap.appendChild(picker(aliveP(room).filter(p=>p.id!==myPlayerId),id=>submitVote(id),room.votes[myPlayerId]));
+  if(m.job==='dictator'&&m.alive){
+    wrap.insertAdjacentHTML('beforeend','<div class="section-title">قدرة الديكتاتور</div>');
+    if(m.usesLeft<=0)wrap.appendChild(mkEl('<p class="empty-note">خلصت استخداماتك.</p>'));
+    else wrap.appendChild(picker(aliveP(room).filter(p=>p.id!==myPlayerId),id=>dictatorOverride(id),room.voteOverride));
+  }
+  if(m.job==='aphrodite'&&m.alive){
+    wrap.insertAdjacentHTML('beforeend','<div class="section-title">قدرة الجميلة</div>');
+    if(m.usesLeft<=0)wrap.appendChild(mkEl('<p class="empty-note">استخدمتيها.</p>'));
+    else{const b=mkEl(`<button class="${room.aphroditeSave?'btn-teal':'btn-outline'}">${room.aphroditeSave?'✓ هتنقذي المهرج':'فعّلي إنقاذ المهرج'}</button>`);b.onclick=aphroditeToggle;wrap.appendChild(b);}
+  }
+  wrap.insertAdjacentHTML('beforeend',`<p class="footer-note">${Object.keys(room.votes||{}).length} من ${aliveP(room).length} صوّتوا.</p>`);
+  return wrap;
+}
+
+function renderKillerPanel(m){
+  const wrap=document.createElement('div');
+  const killer=room.players.find(p=>p.id===room.killerRevengeFor);
+  if(!killer)return wrap;
+  if(myPlayerId===killer.id){
+    wrap.insertAdjacentHTML('beforeend','<div class="section-title">اختار حد تاخده معاك</div>');
+    wrap.appendChild(picker(aliveP(room),id=>killerRevenge(id)));
+  }else{
+    wrap.appendChild(mkEl(`<p class="empty-note">${esc(killer.name)} (القاتل) بيختار...</p>`));
+  }
+  return wrap;
+}
+
+function renderHostControls(){
+  const wrap=document.createElement('div');
+  wrap.insertAdjacentHTML('beforeend','<div class="section-title">تحكم الهوست</div>');
+  const card=mkEl(`<div class="card" style="--accent:var(--gold)"></div>`);
+  if(room.phase==='night'){const b=mkEl(`<button class="btn-gold">إنهاء الليل ← التصويت</button>`);b.onclick=hostEndNight;card.appendChild(b);}
+  else if(room.phase==='voting'){const b=mkEl(`<button class="btn-gold">احسب التصويت</button>`);b.onclick=resolveVoting;card.appendChild(b);}
+  else if(room.phase==='killerRevenge'){const b=mkEl(`<button class="btn-outline">تخطي رد القاتل</button>`);b.onclick=skipRevenge;card.appendChild(b);}
+  card.insertAdjacentHTML('beforeend','<div style="height:8px;"></div><p style="font-size:12px;color:var(--muted);margin:0 0 8px;">إعلان يدوي للفوز:</p>');
+  const rw=mkEl(`<div class="row2"></div>`);
+  const b1=mkEl(`<button class="btn-outline">فوز البشر</button>`);b1.onclick=()=>hostDeclare('human');
+  const b2=mkEl(`<button class="btn-outline">فوز الجواسيس</button>`);b2.onclick=()=>hostDeclare('spy');
+  rw.append(b1,b2);card.appendChild(rw);
+  wrap.appendChild(card);return wrap;
+}
+
+function renderLog(){
+  const box=mkEl(`<div class="log-box"></div>`);
+  (room.log||[]).slice(0,50).forEach(e=>{
+    box.insertAdjacentHTML('beforeend',`<div class="log-entry">ج${e.round} — ${esc(e.text)}</div>`);
+  });
+  if(!box.children.length)box.innerHTML='<div class="log-entry">لسه مفيش حاجة حصلت.</div>';
+  return box;
+}
+
+function picker(list,onPick,selected){
+  const box=document.createElement('div');
+  if(!list||!list.length){box.innerHTML='<p class="empty-note">مفيش أهداف.</p>';return box;}
+  list.forEach(p=>{
+    const b=mkEl(`<button class="pick-btn ${selected===p.id?'selected':''}">${esc(p.name)}</button>`);
+    b.onclick=()=>onPick(p.id);box.appendChild(b);
+  });
+  return box;
+}
+
+// ═══════════════════ AUTH SCREENS ═══════════════════
+function renderHome(){
+  const app=document.getElementById('app');app.innerHTML='';
+  const wrap=document.createElement('div');
+  wrap.innerHTML=`
+    <div class="auth-logo"><div class="z">Z</div><div class="name">Game — الجواسيس</div></div>
+    <div id="authErr" style="display:none;" class="err-msg"></div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabLogin">تسجيل الدخول</div>
+      <div class="auth-tab" id="tabReg">إنشاء حساب</div>
+    </div>
+    <div id="authForm"></div>
+  `;
+  app.appendChild(wrap);
+  document.getElementById('tabLogin').onclick=()=>switchAuthTab('login');
+  document.getElementById('tabReg').onclick=()=>switchAuthTab('reg');
+  switchAuthTab('login');
+}
+
+function switchAuthTab(t){
+  document.getElementById('tabLogin').classList.toggle('active',t==='login');
+  document.getElementById('tabReg').classList.toggle('active',t==='reg');
+  document.getElementById('authErr').style.display='none';
+  renderAuthForm(t);
+}
+
+function renderAuthForm(type){
+  const isReg=type==='reg';
+  const form=document.getElementById('authForm');
+  form.innerHTML=`
+    ${isReg?`<div class="field"><label>الاسم في اللعبة</label><input type="text" id="authName" placeholder="اسمك" maxlength="16"></div>`:''}
+    <div class="field"><label>البريد الإلكتروني</label><input type="email" id="authEmail" placeholder="email@example.com"></div>
+    <div class="field"><label>كلمة السر</label><input type="password" id="authPass" placeholder="••••••••"></div>
+    <button id="authSubmit" class="btn-gold">${isReg?'إنشاء الحساب':'تسجيل الدخول'}</button>
+    <div class="divider">أو</div>
+    <button id="googleBtn" class="btn-google">
+      <svg viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      الدخول بـ Google
+    </button>
+  `;
+  document.getElementById('authSubmit').onclick=async()=>{
+    const email=(document.getElementById('authEmail').value||'').trim();
+    const pass=(document.getElementById('authPass').value||'').trim();
+    const name=isReg?(document.getElementById('authName').value||'').trim():'';
+    if(!email||!pass){showAuthErr('اكتب الإيميل وكلمة السر');return;}
+    if(isReg&&!name){showAuthErr('اكتب اسمك في اللعبة');return;}
+    try{
+      if(isReg){
+        const cred=await auth.createUserWithEmailAndPassword(email,pass);
+        await cred.user.updateProfile({displayName:name});
+      }else{
+        await auth.signInWithEmailAndPassword(email,pass);
+      }
+    }catch(e){showAuthErr(authErrAr(e.code));}
+  };
+  document.getElementById('googleBtn').onclick=async()=>{
+    try{await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());}
+    catch(e){showAuthErr(authErrAr(e.code));}
+  };
+}
+
+function showAuthErr(msg){const e=document.getElementById('authErr');if(e){e.textContent=msg;e.style.display='block';}}
+function authErrAr(code){
+  const map={'auth/user-not-found':'مفيش حساب بالإيميل ده','auth/wrong-password':'كلمة السر غلط','auth/invalid-credential':'إيميل أو كلمة سر غلط','auth/email-already-in-use':'الإيميل مسجّل خلاص','auth/weak-password':'كلمة السر ضعيفة (6 حروف على الأقل)','auth/invalid-email':'الإيميل مش صح','auth/popup-closed-by-user':'إغلقت نافذة Google','auth/too-many-requests':'محاولات كتير، استنى شوية'};
+  return map[code]||'حصل خطأ ('+code+')';
+}
+
+function renderLobbyHome(){
+  const app=document.getElementById('app');app.innerHTML='';
+  const dn=currentUser.displayName||currentUser.email||'لاعب';
+  const wrap=document.createElement('div');
+  wrap.innerHTML=`
+    <div class="auth-logo"><div class="z">Z</div><div class="name">Game — الجواسيس</div></div>
+    <div class="user-chip">
+      <div class="av">${dn[0].toUpperCase()}</div>
+      <div class="nm">أهلًا، ${esc(dn)}</div>
+      <button class="logout" id="logoutBtn">خروج</button>
+    </div>
+    <div class="card" style="--accent:var(--gold)">
+      <button class="btn-gold" id="createBtn">إنشاء غرفة جديدة</button>
+      <div class="divider">أو</div>
+      <div class="field"><label>كود الغرفة</label><input type="text" id="codeInput" placeholder="مثال: A1B2" maxlength="4" style="text-transform:uppercase;margin-bottom:10px;"></div>
+      <button class="btn-outline" id="joinBtn">الانضمام</button>
+    </div>
+    <p class="footer-note">كل لاعب يفتح الملف، يسجل دخول، ويدخل نفس الكود.</p>
+  `;
+  app.appendChild(wrap);
+  document.getElementById('logoutBtn').onclick=()=>auth.signOut();
+  document.getElementById('createBtn').onclick=async()=>{
+    const name=currentUser.displayName||currentUser.email.split('@')[0]||'لاعب';
+    await createRoom(name);
+  };
+  document.getElementById('joinBtn').onclick=async()=>{
+    const code=document.getElementById('codeInput').value.trim().toUpperCase();
+    if(!code){showToast('اكتب الكود الأول');return;}
+    const name=currentUser.displayName||currentUser.email.split('@')[0]||'لاعب';
+    await joinRoom(code,name);
+  };
+}
+
+// ═══════════════════ BOOT ═══════════════════
+auth.onAuthStateChanged(user=>{
+  currentUser=user;
+  if(!user){
+    if(unsubRoom){unsubRoom();unsubRoom=null;}
+    myRoomCode=null;myPlayerId=null;room=null;
+    renderHome();
+  }else{
+    if(myRoomCode&&room)renderScreen();
+    else renderLobbyHome();
+  }
+});
+}); // end window.load
+</script>
+</body>
+</html>
