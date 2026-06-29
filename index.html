@@ -166,17 +166,22 @@ async function saveRoom(r){
 }
 function subscribeRoom(code){
   if(unsubRoom) unsubRoom();
-  unsubRoom=db.collection('zgame-rooms').doc(code).onSnapshot(snap=>{
+  unsubRoom=db.collection('zgame-rooms').doc(code).onSnapshot(async snap=>{
     if(snap.exists){
       const data=snap.data();
-      // شيك لو اللاعب اتطرد (مش موجود في اللاعبين)
+      // شيك لو اللاعب اتطرد
       if(myPlayerId && !data.players.find(p=>p.id===myPlayerId)){
         if(unsubRoom){unsubRoom();unsubRoom=null;}
         myRoomCode=null;myPlayerId=null;room=null;
         showKickedScreen();
         return;
       }
-      room=data; renderScreen();
+      room=data;
+      renderScreen();
+      // الهوست بيحرك اللعبة تلقائياً
+      if(isHost()&&room.phase!=='lobby'&&room.phase!=='ended'){
+        await autoAdvance(room);
+      }
     }
   });
 }
@@ -219,7 +224,7 @@ function assignRoles(r){
       p.bomberTarget=opts[Math.floor(Math.random()*opts.length)].id;
     }
   });
-  r.phase='night';r.round=1;
+  r.phase='night';r.round=1;r.nightDone={};
   addLog(r,'— بدأت اللعبة! الجولة 1: الليل —');
 }
 
@@ -309,58 +314,131 @@ async function hostStartGame(){
   assignRoles(r);await saveRoom(r);
 }
 
+// ═══ helper: هل اللاعب ده محتاج يعمل أكشن الليلة؟ ═══
+function needsNightAction(p){
+  if(!p.alive)return false;
+  const job=p.job;
+  if(!job)return false;
+  // وظايف بتتفعل وقت التصويت مش الليل
+  if(job==='dictator'||job==='aphrodite')return false;
+  // وظايف passive
+  if(job==='sensor'||job==='jester'||job==='bomber')return false;
+  // villain: بس لو مفيش جواسيس
+  if(job==='villain') return aliveSide(room,'spy').length===0&&!p.villainConverted;
+  // changer: بس لو لسه ماغيرش
+  if(job==='changer') return !p.changedOnce&&!p.disabledThisRound;
+  // neutral: بس لو لسه ماخمنش
+  if(job==='neutral') return !p.neutralGuess&&!p.disabledThisRound;
+  // angel: بس لو فيه موتى
+  if(job==='angel') return p.usesLeft>0&&room.players.some(x=>!x.alive)&&!p.disabledThisRound;
+  // باقي الوظايف اللي عندها target
+  if(['traitor','hacker','lawyer','sheriff'].includes(job)) return p.usesLeft!==0&&!p.disabledThisRound;
+  return false;
+}
+
+// ═══ الهوست بيراقب ويحرك المراحل تلقائياً ═══
+async function autoAdvance(r){
+  if(!r||r.winner)return;
+
+  if(r.phase==='night'){
+    // شيك لو كل اللاعبين خلصوا أكشنهم
+    const pending=r.players.filter(p=>needsNightActionOnRoom(p,r)&&!r.nightDone[p.id]);
+    if(pending.length===0){
+      checkWin(r);
+      if(!r.winner){r.phase='voting';addLog(r,'— وقت التصويت —');}
+      await saveRoom(r);
+    }
+  }else if(r.phase==='voting'){
+    const alive=r.players.filter(p=>p.alive);
+    const voted=Object.keys(r.votes||{}).length;
+    if(voted>=alive.length){
+      await doResolveVoting(r);
+    }
+  }
+}
+
+// نسخة من needsNightAction تشتغل على room object معين
+function needsNightActionOnRoom(p,r){
+  if(!p.alive)return false;
+  const job=p.job;
+  if(!job)return false;
+  if(job==='dictator'||job==='aphrodite')return false;
+  if(job==='sensor'||job==='jester'||job==='bomber')return false;
+  if(job==='villain') return aliveSide(r,'spy').length===0&&!p.villainConverted;
+  if(job==='changer') return !p.changedOnce&&!p.disabledThisRound;
+  if(job==='neutral') return !p.neutralGuess&&!p.disabledThisRound;
+  if(job==='angel') return p.usesLeft>0&&r.players.some(x=>!x.alive)&&!p.disabledThisRound;
+  if(['traitor','hacker','lawyer','sheriff'].includes(job)) return p.usesLeft!==0&&!p.disabledThisRound;
+  return false;
+}
+
 async function nightAction(jobKey,payload){
   const r=JSON.parse(JSON.stringify(room));
   const m=r.players.find(p=>p.id===myPlayerId);
   if(!m||m.disabledThisRound)return;
+  r.nightDone=r.nightDone||{};
   if(jobKey==='traitor'&&payload.targetId){
     const t=r.players.find(p=>p.id===payload.targetId);
-    if(t&&t.alive&&m.usesLeft>0){t.alive=false;m.usesLeft--;addLog(r,`${t.name} اختفى الليلة. (الخاين)`);}
+    if(t&&t.alive&&m.usesLeft>0){t.alive=false;m.usesLeft--;addLog(r,`${t.name} اختفى الليلة. (الخاين)`);r.nightDone[myPlayerId]=true;}
   }else if(jobKey==='villain'){
-    if(aliveSide(r,'spy').length===0&&!m.villainConverted){m.villainConverted=true;m.side='spy';addLog(r,`${m.name} تحول لجاسوس!`);}
+    if(aliveSide(r,'spy').length===0&&!m.villainConverted){m.villainConverted=true;m.side='spy';addLog(r,`${m.name} تحول لجاسوس!`);r.nightDone[myPlayerId]=true;}
   }else if(jobKey==='hacker'&&payload.targetId){
     const t=r.players.find(p=>p.id===payload.targetId);
-    if(t){t.disabledThisRound=true;addLog(r,'لاعب عُطِّلت وظيفته الليلة.');}
+    if(t){t.disabledThisRound=true;addLog(r,'لاعب عُطِّلت وظيفته الليلة.');r.nightDone[myPlayerId]=true;}
   }else if(jobKey==='lawyer'&&payload.targetId){
     const t=r.players.find(p=>p.id===payload.targetId);
-    if(t){t.protectedThisRound=true;addLog(r,'لاعب يتحمى الليلة.');}
+    if(t){t.protectedThisRound=true;addLog(r,'لاعب يتحمى الليلة.');r.nightDone[myPlayerId]=true;}
   }else if(jobKey==='sheriff'&&payload.targetId){
     const t=r.players.find(p=>p.id===payload.targetId);
-    if(t&&t.alive&&m.usesLeft>0){t.alive=false;m.usesLeft--;addLog(r,`${t.name} اتطرد! (الشرطي)`);}
+    if(t&&t.alive&&m.usesLeft>0){t.alive=false;m.usesLeft--;addLog(r,`${t.name} اتطرد! (الشرطي)`);r.nightDone[myPlayerId]=true;}
   }else if(jobKey==='angel'&&payload.targetId){
     const t=r.players.find(p=>p.id===payload.targetId);
-    if(t&&!t.alive&&m.usesLeft>0){t.alive=true;m.usesLeft--;addLog(r,`${t.name} رجع! (الملاك)`);}
+    if(t&&!t.alive&&m.usesLeft>0){t.alive=true;m.usesLeft--;addLog(r,`${t.name} رجع! (الملاك)`);r.nightDone[myPlayerId]=true;}
   }else if(jobKey==='changer'){
     if(!m.changedOnce){
       const pool=Object.keys(ROLES).filter(k=>k!==m.job&&(HUMAN_ONLY.includes(k)?m.side==='human':SPY_ONLY.includes(k)?m.side==='spy':true));
       const nj=pool[Math.floor(Math.random()*pool.length)];
       m.job=nj;m.changedOnce=true;const nm=ROLES[nj];m.usesLeft=nm&&nm.uses?nm.uses:0;
-      addLog(r,`${m.name} غيّر وظيفته.`);
+      addLog(r,`${m.name} غيّر وظيفته.`);r.nightDone[myPlayerId]=true;
     }
   }else if(jobKey==='neutral'&&payload.guess){
-    if(!m.neutralGuess){m.neutralGuess=payload.guess;addLog(r,'المحايد حدد تخمينه.');}
+    if(!m.neutralGuess){m.neutralGuess=payload.guess;addLog(r,'المحايد حدد تخمينه.');r.nightDone[myPlayerId]=true;}
   }
   await saveRoom(r);
+  // الهوست يشيك لو الليل خلص
+  if(isHost())await autoAdvance(r);
 }
 
 async function submitVote(targetId){
   const r=JSON.parse(JSON.stringify(room));
-  r.votes[myPlayerId]=targetId;await saveRoom(r);
+  r.votes[myPlayerId]=targetId;
+  await saveRoom(r);
+  // الهوست يشيك لو التصويت اكتمل
+  if(isHost())await autoAdvance(r);
 }
+
 async function dictatorOverride(targetId){
   const r=JSON.parse(JSON.stringify(room));
   const m=r.players.find(p=>p.id===myPlayerId);
   if(m&&m.usesLeft>0){r.voteOverride=targetId;m.usesLeft--;addLog(r,'الديكتاتور غيّر التصويت!');await saveRoom(r);}
 }
+
 async function aphroditeToggle(){
   const r=JSON.parse(JSON.stringify(room));
   const m=r.players.find(p=>p.id===myPlayerId);
   if(m&&m.usesLeft>0){r.aphroditeSave=!r.aphroditeSave;await saveRoom(r);}
 }
-async function resolveVoting(){
-  const r=JSON.parse(JSON.stringify(room));
+
+async function doResolveVoting(r){
   const targetId=r.voteOverride||tallyVotes(r);
-  if(!targetId){showToast('مفيش تصويت كافي');return;}
+  if(!targetId){
+    // مفيش أغلبية — روح الليل التالي
+    r.players.forEach(p=>{p.protectedThisRound=false;p.disabledThisRound=false;});
+    r.votes={};r.voteOverride=null;r.aphroditeSave=false;r.nightDone={};
+    r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);
+    if(!r.winner)addLog(r,`— الجولة ${r.round}: الليل (مفيش أغلبية) —`);
+    await saveRoom(r);return;
+  }
   const t=r.players.find(p=>p.id===targetId);if(!t)return;
   if(t.protectedThisRound){
     addLog(r,`${t.name} كان محمي، مطردش.`);
@@ -373,7 +451,7 @@ async function resolveVoting(){
     else if(t.job==='killer'&&t.usesLeft>0){r.killerRevengeFor=t.id;addLog(r,`${t.name} كان القاتل! هياخد حد معاه...`);}
   }
   r.players.forEach(p=>{p.protectedThisRound=false;p.disabledThisRound=false;});
-  r.votes={};r.voteOverride=null;r.aphroditeSave=false;
+  r.votes={};r.voteOverride=null;r.aphroditeSave=false;r.nightDone={};
   if(!r.winner)checkWin(r);
   if(!r.winner&&!r.killerRevengeFor){
     r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);
@@ -381,31 +459,23 @@ async function resolveVoting(){
   }else if(r.killerRevengeFor){r.phase='killerRevenge';}
   await saveRoom(r);
 }
+
 async function killerRevenge(targetId){
   const r=JSON.parse(JSON.stringify(room));
   const killer=r.players.find(p=>p.id===r.killerRevengeFor);
   const t=r.players.find(p=>p.id===targetId);
   if(killer&&t&&t.alive){t.alive=false;addLog(r,`${killer.name} أخد ${t.name} معاه!`);}
-  r.killerRevengeFor=null;checkWin(r);
+  r.killerRevengeFor=null;r.nightDone={};checkWin(r);
   if(!r.winner){r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);if(!r.winner)addLog(r,`— الجولة ${r.round}: الليل —`);}
   await saveRoom(r);
 }
-async function skipRevenge(){
-  const r=JSON.parse(JSON.stringify(room));
-  r.killerRevengeFor=null;checkWin(r);
-  if(!r.winner){r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);if(!r.winner)addLog(r,`— الجولة ${r.round}: الليل —`);}
-  await saveRoom(r);
-}
-async function hostEndNight(){
-  const r=JSON.parse(JSON.stringify(room));checkWin(r);
-  if(!r.winner){r.phase='voting';addLog(r,'— وقت التصويت —');}
-  await saveRoom(r);
-}
+
 async function hostDeclare(side){
   const r=JSON.parse(JSON.stringify(room));
   r.winner=side;r.phase='ended';addLog(r,'الهوست أعلن الفوز يدويًا.');
   await saveRoom(r);
 }
+
 async function leaveRoom(){
   if(!myRoomCode||!myPlayerId)return;
   const r=JSON.parse(JSON.stringify(room));
@@ -432,7 +502,7 @@ async function leaveRoom(){
 async function hostReset(){
   const r=JSON.parse(JSON.stringify(room));
   r.phase='lobby';r.round=0;r.winner=null;r.neutralWin=false;
-  r.votes={};r.voteOverride=null;r.aphroditeSave=false;r.killerRevengeFor=null;
+  r.votes={};r.voteOverride=null;r.aphroditeSave=false;r.killerRevengeFor=null;r.nightDone={};
   r.players.forEach(p=>Object.assign(p,{side:null,job:null,alive:true,usesLeft:0,
     protectedThisRound:false,disabledThisRound:false,bomberTarget:null,
     bomberSafe:false,neutralGuess:null,villainConverted:false,changedOnce:false}));
@@ -561,6 +631,17 @@ function renderInGame(){
 
 function renderNight(m){
   const wrap=document.createElement('div');
+  // progress indicator
+  const needAction=room.players.filter(p=>needsNightActionOnRoom(p,room));
+  const doneCount=needAction.filter(p=>(room.nightDone||{})[p.id]).length;
+  const totalNeed=needAction.length;
+  if(totalNeed>0){
+    wrap.insertAdjacentHTML('beforeend',`<p class="footer-note" style="margin-bottom:10px;">⏳ ${doneCount} من ${totalNeed} أنهوا أكشن الليل</p>`);
+  }
+  if((room.nightDone||{})[myPlayerId]){
+    wrap.appendChild(mkEl('<div class="card" style="--accent:var(--teal);text-align:center;"><p style="margin:0;color:var(--teal);font-weight:700;">✓ انتهيت من أكشنك، في انتظار الباقين...</p></div>'));
+    return wrap;
+  }
   if(m.disabledThisRound){wrap.appendChild(mkEl(`<div class="card" style="--accent:var(--red)"><p style="margin:0;font-size:13px;color:var(--muted);">وظيفتك معطلة هذه الجولة.</p></div>`));return wrap;}
   const meta=ROLES[m.job];
   if(!meta)return wrap;
@@ -633,7 +714,7 @@ function renderVoting(m){
     if(m.usesLeft<=0)wrap.appendChild(mkEl('<p class="empty-note">استخدمتيها.</p>'));
     else{const b=mkEl(`<button class="${room.aphroditeSave?'btn-teal':'btn-outline'}">${room.aphroditeSave?'✓ هتنقذي المهرج':'فعّلي إنقاذ المهرج'}</button>`);b.onclick=aphroditeToggle;wrap.appendChild(b);}
   }
-  wrap.insertAdjacentHTML('beforeend',`<p class="footer-note">${Object.keys(room.votes||{}).length} من ${aliveP(room).length} صوّتوا.</p>`);
+  wrap.insertAdjacentHTML('beforeend',`<p class="footer-note">🗳️ ${Object.keys(room.votes||{}).length} من ${aliveP(room).length} صوّتوا — بيتحسب تلقائي لما الكل يصوّت.</p>`);
   return wrap;
 }
 
@@ -652,17 +733,20 @@ function renderKillerPanel(m){
 
 function renderHostControls(){
   const wrap=document.createElement('div');
-  wrap.insertAdjacentHTML('beforeend','<div class="section-title">تحكم الهوست</div>');
-  const card=mkEl(`<div class="card" style="--accent:var(--gold)"></div>`);
-  if(room.phase==='night'){const b=mkEl(`<button class="btn-gold">إنهاء الليل ← التصويت</button>`);b.onclick=hostEndNight;card.appendChild(b);}
-  else if(room.phase==='voting'){const b=mkEl(`<button class="btn-gold">احسب التصويت</button>`);b.onclick=resolveVoting;card.appendChild(b);}
-  else if(room.phase==='killerRevenge'){const b=mkEl(`<button class="btn-outline">تخطي رد القاتل</button>`);b.onclick=skipRevenge;card.appendChild(b);}
-  card.insertAdjacentHTML('beforeend','<div style="height:8px;"></div><p style="font-size:12px;color:var(--muted);margin:0 0 8px;">إعلان يدوي للفوز:</p>');
-  const rw=mkEl(`<div class="row2"></div>`);
-  const b1=mkEl(`<button class="btn-outline">فوز البشر</button>`);b1.onclick=()=>hostDeclare('human');
-  const b2=mkEl(`<button class="btn-outline">فوز الجواسيس</button>`);b2.onclick=()=>hostDeclare('spy');
-  rw.append(b1,b2);card.appendChild(rw);
-  wrap.appendChild(card);return wrap;
+  if(room.phase==='killerRevenge'){
+    wrap.insertAdjacentHTML('beforeend','<div class="section-title">تحكم الهوست</div>');
+    const card=mkEl(`<div class="card" style="--accent:var(--gold)"></div>`);
+    const bsk=mkEl(`<button class="btn-outline">تخطي رد القاتل</button>`);
+    bsk.onclick=async()=>{
+      const r=JSON.parse(JSON.stringify(room));
+      r.killerRevengeFor=null;r.nightDone={};checkWin(r);
+      if(!r.winner){r.round+=1;r.phase='night';bomberCheck(r);checkWin(r);if(!r.winner)addLog(r,`— الجولة ${r.round}: الليل —`);}
+      await saveRoom(r);
+    };
+    card.appendChild(bsk);
+    wrap.appendChild(card);
+  }
+  return wrap;
 }
 
 function renderLog(){
