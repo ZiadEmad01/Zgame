@@ -268,6 +268,16 @@ async function joinRoom(code,displayName){
   await saveRoom(r);subscribeRoom(code);return true;
 }
 
+async function kickPlayer(pid){
+  if(!isHost()||pid===myPlayerId)return;
+  const r=JSON.parse(JSON.stringify(room));
+  const idx=r.players.findIndex(p=>p.id===pid);
+  if(idx===-1)return;
+  addLog(r,`${r.players[idx].name} اتطرد من الغرفة.`);
+  r.players.splice(idx,1);
+  await saveRoom(r);
+}
+
 async function hostStartGame(){
   if(!isHost())return;
   const r=JSON.parse(JSON.stringify(room));
@@ -372,6 +382,29 @@ async function hostDeclare(side){
   r.winner=side;r.phase='ended';addLog(r,'الهوست أعلن الفوز يدويًا.');
   await saveRoom(r);
 }
+async function leaveRoom(){
+  if(!myRoomCode||!myPlayerId)return;
+  const r=JSON.parse(JSON.stringify(room));
+  const idx=r.players.findIndex(p=>p.id===myPlayerId);
+  if(idx===-1){myRoomCode=null;myPlayerId=null;room=null;if(unsubRoom){unsubRoom();unsubRoom=null;}renderLobbyHome();return;}
+  // لو هو الهوست وفيه لاعبين تانيين، انقل الهوست
+  if(r.hostId===myPlayerId&&r.players.length>1){
+    const next=r.players.find(p=>p.id!==myPlayerId);
+    if(next)r.hostId=next.id;
+  }
+  r.players.splice(idx,1);
+  addLog(r,`${room.players[idx].name} غادر الغرفة.`);
+  if(r.players.length===0){
+    // امسح الغرفة لو فضيت
+    try{await db.collection('zgame-rooms').doc(r.code).delete();}catch(e){}
+  }else{
+    await saveRoom(r);
+  }
+  if(unsubRoom){unsubRoom();unsubRoom=null;}
+  myRoomCode=null;myPlayerId=null;room=null;
+  renderLobbyHome();
+}
+
 async function hostReset(){
   const r=JSON.parse(JSON.stringify(room));
   r.phase='lobby';r.round=0;r.winner=null;r.neutralWin=false;
@@ -400,10 +433,17 @@ window.doSignOut=()=>{auth.signOut();};
 
 function renderTopBar(){
   const labels={lobby:'في الانتظار',night:'🌙 الليل',voting:'🗳️ التصويت',killerRevenge:'🔪 رد القاتل',ended:'انتهت'};
-  return mkEl(`<div class="stamp-bar">
+  const bar=mkEl(`<div class="stamp-bar">
     <div><div class="title">ZGame</div><div class="sub">${room.phase==='lobby'?'غرفة الانتظار':'الجولة '+room.round+' • '+(labels[room.phase]||room.phase)}</div></div>
-    <div class="code-pill">${room.code}</div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div class="code-pill">${room.code}</div>
+      <button id="leaveRoomBtn" style="background:rgba(193,52,47,.15);border:1px solid rgba(193,52,47,.4);color:#e57373;border-radius:7px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;width:auto;margin:0;">خروج</button>
+    </div>
   </div>`);
+  bar.querySelector('#leaveRoomBtn').onclick=()=>{
+    if(confirm('متأكد إنك عايز تطلع من الغرفة؟'))leaveRoom();
+  };
+  return bar;
 }
 
 function renderLobby(){
@@ -411,9 +451,13 @@ function renderLobby(){
   wrap.innerHTML=`<p class="lead">شارك الكود <b class="mono" style="color:var(--gold)">${room.code}</b> مع الفريق.</p><div class="section-title">اللاعبين (${room.players.length})</div>`;
   const card=mkEl(`<div class="card" style="--accent:#26a69a"></div>`);
   room.players.forEach(p=>{
-    card.insertAdjacentHTML('beforeend',`<div class="player-row">
+    const row=mkEl(`<div class="player-row">
       <span class="player-name">${p.id===room.hostId?'<span class="host-badge">هوست</span>':''}${esc(p.name)}${p.id===myPlayerId?' <span style="color:var(--muted);font-size:11px;">(إنت)</span>':''}</span>
+      ${isHost()&&p.id!==myPlayerId?`<button data-kick="${p.id}" style="background:rgba(193,52,47,.15);border:1px solid rgba(193,52,47,.35);color:#e57373;border-radius:6px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;width:auto;margin:0;">طرد</button>`:''}
     </div>`);
+    const kb=row.querySelector('[data-kick]');
+    if(kb)kb.onclick=()=>kickPlayer(kb.dataset.kick);
+    card.appendChild(row);
   });
   wrap.appendChild(card);
   if(isHost()){
